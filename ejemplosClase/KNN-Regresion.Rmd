@@ -1,0 +1,269 @@
+---
+title: "KNN Regresión"
+author: "Msc. Lynette García"
+date: "2025-03-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+```{r cargando paquetes, message=FALSE, warning=FALSE}
+library(GGally)
+library(dplyr)
+library(tidyverse)
+library(class)
+library(ggplot2)
+library(caret)
+```
+
+## Descripción variables carros
+
+```{r echo=FALSE}
+carros <- read.csv("../Datos/cars.csv")
+```
+
+***Número de filas:*** 205  
+***Número de atributos o columnas:*** 26 
+
+### Información de los atributos:  
+
+|Atributo:|Rango del atributo:|
+|--------:|:-------------------:|
+|1. symboling:|-3, -2, -1, 0, 1, 2, 3.|
+|2. normalized-losses:|numérico 65 hasta 256.|
+|3. make:|alfa-romero, audi, bmw, chevrolet, dodge, honda, isuzu, jaguar, mazda, mercedes-benz, mercury, mitsubishi, nissan, peugot, plymouth, porsche,  renault, saab, subaru, hastayota, volkswagen, volvo|
+|4. fuel-type:|diesel, gas.|
+|5. aspiration:|std, turbo.|
+|6. num-of-doors:|four, two.|
+|7. body-style:|hardtop, wagon, sedan, hatchback, convertible.|
+|8. drive-wheels:|4wd, fwd, rwd.|
+|9. engine-location:|front, rear.|
+|10. wheel-base:|numérico desde 86.6 hasta 120.9.|
+|11. length:|numérico desde 141.1 hasta 208.1.|
+|12. width:|numérico desde 60.3 hasta 72.3.|
+|13. height:|numérico desde 47.8 hasta 59.8.|
+|14. curb-weight:|numérico desde 1488 hasta 4066.|
+|15. engine-type:|dohc, dohcv, l, ohc, ohcf, ohcv, rotor.|
+|16. num-of-cylinders:|eight, five, four, six, three, twelve, two.|
+|17. engine-size:|numérico desde 61 to 326.|
+|18. fuel-system:|1bbl, 2bbl, 4bbl, idi, mfi, mpfi, spdi, spfi.|
+|19. bore:|numérico desde 2.54 hasta 3.94.|
+|20. stroke:|numérico desde 2.07 hasta 4.17.|
+|21. compression-ratio:|numérico desde 7 hasta 23.|
+|22. horsepower:|numérico desde 48 hasta 288.|
+|23. peak-rpm:|numérico desde 4150 hasta 6600.|
+|24. city-mpg:|numérico desde 13 hasta 49.|
+|25. highway-mpg:|numérico desde 16 hasta 54.|
+|26. price:|numérico desde 5118 hasta 45400.|
+
+
+```{r carros summary}
+summary(carros)
+```
+
+## Separamos variables numéricas de categóricas 
+
+
+```{r variables, echo=FALSE}
+colNum <- c("normalized_losses","wheel_base","length","width","curb_weight","engine_size", "bore","stroke","compression_ratio","horsepower","peak_rpm","city_mpg","highway_mpg","price")
+numericas<-carros[,colNum]
+categoricas <- carros[,setdiff(names(carros), colNum)]
+```
+
+## Analizamos las numéricas
+```{r resumen de variables numericas}
+summary(numericas)
+```
+  
+El  `r (nrow(carros[is.na(carros$normalized_losses),])/nrow(carros))*100`% representan valores desconocidos, por lo que esta variable no se tomará en cuenta. El resto de las variables que presentan valores faltantes se completarán con la mediana para no alterar la distribución de los datos.  
+```{r sustituyendoNAs}
+numericas[is.na(numericas$bore),"bore"]<-median(numericas$bore,na.rm = T)
+numericas[is.na(numericas$stroke),"stroke"]<-median(numericas$stroke,na.rm = T)
+numericas[is.na(numericas$horsepower),"horsepower"]<-median(numericas$horsepower,na.rm = T)
+numericas[is.na(numericas$peak_rpm),"peak_rpm"]<-median(numericas$peak_rpm,na.rm = T)
+numericas[is.na(numericas$price),"price"]<-median(numericas$price,na.rm = T)
+numericas$normalized_losses<-NULL
+
+```
+
+### Analizamos correlación
+
+```{r correlacion, }
+ggpairs(numericas)
+```
+  
+## Variable Respuesta:
+
+La variable que se pretende predecir es el consumo por galón en ciudad (city_mpg). Como podemos ver esta variable está altamente relacionada con consumo por galón en carretera (highway_mpg). También podemos ver que hay multicolinealidad en algunos de los predictores.
+Separemos en conjuntos de entrenamiento y prueba.
+
+## Conjuntos de entrenamiento y prueba.   
+
+Se separarán en 70% de los datos en el conjunto de entrenamiento y 30% en el conjunto de prueba, usando un muestreo aleatorio simple.   
+
+```{r trainTest}
+set.seed(123)
+porciento <- 0.7
+corte <- sample(nrow(carros),nrow(carros)*porciento)
+encoder <- dummyVars("~ .", data = categoricas, fullRank = FALSE)
+categoricas_encoded <- as.data.frame(predict(encoder, newdata = categoricas) )
+carros_encoded<-cbind(numericas,categoricas_encoded)
+colSums(is.na(carros_encoded))  # Muestra cuántos valores faltantes hay por columna
+for(i in 1:ncol(carros_encoded)) {
+  carros_encoded[is.na(carros_encoded[, i]), i] <- mean(carros_encoded[, i], na.rm = TRUE)
+}
+str(carros_encoded)
+train <- carros_encoded[corte,]
+test <- carros_encoded[-corte,]
+```
+  
+## Modelos
+### Variable respuesta  
+Usaremos como variable respuesta la cantidad de millas por litro consumidas en ciudad (mpg).    
+
+### Modelo 1
+Modelo de regresión sin validación cruzada y usando el valor de k calculado como la raiz cuadrada de n
+
+```{r}
+train<-train[complete.cases(train),]
+k_vecinos <- round(sqrt(nrow(carros)),0)
+parametros <- expand.grid(k = k_vecinos)
+modelo1 <- train(
+  city_mpg~., 
+  data=train, 
+  method = "knn", 
+  preProcess= c("center","scale","knnImpute"),
+  tuneGrid = parametros
+)
+predModelo1 <- predict(modelo1, newdata=test)
+
+```
+El RMSE es de `r RMSE(predModelo1, test$city_mpg)`  
+En el siguiente gráfico se muestran los valores predichos y los reales. Notese que el modelo no es bueno para predecir puntos muy alejados de la media ni por encima ni por debajo.  
+```{r}
+
+# Crear un dataframe con los valores reales y predichos
+df_resultados <- data.frame(
+  Índice = 1:length(test$city_mpg),  # Índice de cada observación
+  Real = test$city_mpg,
+  Predicho = predModelo1
+)
+
+# Graficar ambas series
+ggplot(df_resultados) +
+  geom_point(aes(x = Índice, y = Real, color = "Real"), size = 2) +  # Puntos rojos (valores reales)
+  geom_point(aes(x = Índice, y = Predicho, color = "Predicho"), size = 2) +  # Puntos azules (predicciones)
+  scale_color_manual(values = c("Real" = "red", "Predicho" = "blue")) +  # Definir colores
+  labs(title = "Comparación: Valores Reales vs. Predicciones",
+       x = "Índice de Observación",
+       y = "City MPG",
+       color = "Serie") +
+  theme_minimal()
+```
+### Modelo 2.   
+Hagamos un modelo de validación cruzada sin cambiar el número de vecinos más cercanos.  
+
+```{r}
+trctrl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 3)
+modelo2 <- train(
+  city_mpg~., 
+  data=train, 
+  method = "knn", 
+  trControl = trctrl, 
+  preProcess= c("center","scale"),
+  tuneGrid = parametros
+)
+predModelo2 <- predict(modelo2, newdata=test)
+```
+El RMSE es de `r RMSE(predModelo2, test$city_mpg)`  
+En el siguiente gráfico se muestran los valores predichos y los reales. 
+```{r}
+df_resultados <- data.frame(
+  Índice = 1:length(test$city_mpg),  # Índice de cada observación
+  Real = test$city_mpg,
+  Predicho = predModelo2
+)
+
+# Graficar ambas series
+ggplot(df_resultados) +
+  geom_point(aes(x = Índice, y = Real, color = "Real"), size = 2) +  # Puntos rojos (valores reales)
+  geom_point(aes(x = Índice, y = Predicho, color = "Predicho"), size = 2) +  # Puntos azules (predicciones)
+  scale_color_manual(values = c("Real" = "red", "Predicho" = "blue")) +  # Definir colores
+  labs(title = "Comparación: Valores Reales vs. Predicciones",
+       x = "Índice de Observación",
+       y = "City MPG",
+       color = "Serie") +
+  theme_minimal()
+```
+
+### Modelo 3
+Tuneando varios valores de k
+```{r}
+parametros <- expand.grid(k = seq(1,25))
+modelo3 <- train(
+  city_mpg~., 
+  data=train, 
+  method = "knn", 
+  trControl = trctrl, 
+  preProcess= c("center","scale"),
+  tuneGrid = parametros
+)
+predModelo3 <- predict(modelo3, newdata=test)
+```
+
+El mejor valor de k  
+```{r}
+ggplot(modelo3$results, aes(x = k, y = RMSE)) +
+  geom_line(color = "orange") +  # Línea azul
+  geom_point(size = 3, color = "darkgreen") +  # Puntos rojos
+  labs(title = "Precisión vs Número de Vecinos (k)",
+       x = "Número de Vecinos (k)",
+       y = "RMSE") +
+  theme_minimal()  # Tema limpio
+```
+A medida que se incrementa el número de vecinos más cercanos a considerar, también aumenta el error considerablemente. El mejor número de vecinos sería `r modelo3$bestTune`  
+Veamos como le fue al modelo prediciendo ahora. El RMSE es de `r RMSE(predModelo3,test$city_mpg)`
+```{r}
+df_resultados <- data.frame(
+  Índice = 1:length(test$city_mpg),  # Índice de cada observación
+  Real = test$city_mpg,
+  Predicho = predModelo3
+)
+
+# Graficar ambas series
+ggplot(df_resultados) +
+  geom_point(aes(x = Índice, y = Real, color = "Real"), size = 2) +  # Puntos rojos (valores reales)
+  geom_point(aes(x = Índice, y = Predicho, color = "Predicho"), size = 2) +  # Puntos azules (predicciones)
+  scale_color_manual(values = c("Real" = "red", "Predicho" = "blue")) +  # Definir colores
+  labs(title = "Comparación: Valores Reales vs. Predicciones",
+       x = "Índice de Observación",
+       y = "City MPG",
+       color = "Serie") +
+  theme_minimal()
+```
+```{r}
+residuos <- test$city_mpg - predModelo3
+
+# Crear un dataframe con los valores reales y residuos
+df_resultados <- data.frame(
+  Real = test$city_mpg,
+  Residuo = residuos
+)
+
+# Graficar valores reales vs residuos
+ggplot(df_resultados, aes(x = Real, y = Residuo)) +
+  geom_point(color = "red", size = 2, alpha = 0.7) +  # Puntos rojos
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue") +  # Línea en y = 0
+  labs(title = "Valores Reales vs Residuos",
+       x = "City MPG Real",
+       y = "Residuo (Error)") +
+  theme_minimal()
+```
+
+
+A este modelo parece haberle ido mejor que a los demás, los puntos atípicos no los predice bien pero el error es menor. 
+

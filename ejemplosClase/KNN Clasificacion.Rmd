@@ -1,0 +1,127 @@
+---
+title: "KNN"
+author: "Msc. Lynette García"
+date: "2025-03-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r carga de paquetes, message=FALSE, warning=FALSE}
+library(caret)
+library(class)
+library(ggplot2)
+```
+
+El algoritmo **K-Nearest Neighbors (KNN)** es un método de aprendizaje supervisado utilizado tanto para clasificación como para regresión. Se basa en la premisa de que los datos similares tienden a estar cerca unos de otros en el espacio de características.
+
+---
+
+### **¿Cómo funciona?**
+1. **Definir "K"**: Se elige un número de vecinos \( K \), que determinará cuántos puntos cercanos se considerarán para tomar una decisión.
+2. **Medir la distancia**: Para un nuevo punto de datos, se calcula su distancia con todos los puntos de entrenamiento. Comúnmente, se usa la distancia euclidiana:
+  $d(A, B) = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$
+
+3. **Identificar los K vecinos más cercanos**: Se ordenan los puntos de entrenamiento según su distancia con el nuevo punto y se seleccionan los \( K \) más cercanos. ¿Cuántos son los k vecinos más cercanos?   
+La selección de k puede hacerse calculando la raiz cuadrada de la cantidad de observaciones y dependiendo de su valor sumarle o restarle 1. Si la cantidad de clases, en el caso de un modelo de clasificación es par, el k debe ser impar, para evitar empates.   
+4. **Hacer una predicción**:
+   - **Clasificación**: Se toma la clase más frecuente entre los vecinos seleccionados (votación mayoritaria).
+   - **Regresión**: Se toma el promedio de los valores de los vecinos.
+
+---
+
+
+### **Ventajas**
+- Fácil de entender e implementar. 
+- Puede adaptarse a distintos tipos de datos.
+
+### **Desventajas**
+- Se vuelve lento con grandes volúmenes de datos, porque cada predicción implica calcular distancias con todos los puntos.  
+- El performance puede verse afectado si las features tienen escalas muy amplias/variadas (requiere normalización).  
+- La elección del valor de \( K \) puede afectar el desempeño del modelo.
+
+---
+
+### **Cuándo usar KNN**
+- Cuando los datos tienen una estructura clara y pocos atributos.
+- En problemas de clasificación con clases bien separadas.
+- Cuando no se necesita un modelo en tiempo real y se pueden calcular distancias en cada predicción.
+
+```{r}
+set.seed(123)
+porciento <- 0.7
+datos<-iris
+corte<-sample(nrow(datos),size = porciento*nrow(datos))
+train<- datos[corte,]
+test<- datos[-corte,]
+```
+
+### Normalizando datos  
+```{r}
+y_train <- train$Species
+y_test <- test$Species
+x_train <- scale(train[,1:4])
+x_test <- scale(test[,1:4])
+```
+
+### Seleccionando k  
+Probemos con k igual a la raiz cuadrada de n  
+```{r}
+k <- round(sqrt(nrow(datos)),0)
+```
+
+### Modelo de clasificación  
+```{r}
+predModelo1 <- knn(x_train, x_test,y_train,k)
+confusionMatrix(predModelo1,y_test)
+```
+
+
+
+### Hagamos un modelo de validación cruzada
+```{r}
+trctrl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 3)
+modelo2 <- train(
+  Species~., 
+  data=train, 
+  method = "knn", 
+  trControl = trctrl, 
+  preProcess= c("center","scale")
+)
+predModelo2 <- predict(modelo2, newdata=test[,-5])
+confusionMatrix(predModelo2,y_test)
+```
+### Tuneando el k
+```{r}
+parametros <-  expand.grid(k = seq(2,10))
+modelo3 <- train(
+  Species~., 
+  data=train, 
+  method = "knn", 
+  trControl = trctrl, 
+  preProcess= c("center","scale"),
+  tuneGrid = parametros
+)
+
+modelo3
+
+ggplot(modelo3$results, aes(x = k, y = Accuracy)) +
+  geom_line(color = "blue") +  # Línea azul
+  geom_point(size = 3, color = "red") +  # Puntos rojos
+  labs(title = "Precisión vs Número de Vecinos (k)",
+       x = "Número de Vecinos (k)",
+       y = "Precisión (Accuracy)") +
+  theme_minimal()  # Tema limpio
+
+```
+Podemos predecir con el modelo que dio mejor k
+```{r}
+predModelo3 <- predict(modelo3, newdata=test[,-5])
+confusionMatrix(predModelo3,y_test)
+```
+
+
