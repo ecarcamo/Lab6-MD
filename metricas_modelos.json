@@ -1,0 +1,1 @@
+{"Regresi\u00f3n Lineal": {"RMSE": 147.7902, "MAE": 102.5042, "R2": 0.3462}, "\u00c1rbol (max_depth=10)": {"RMSE": 136.5502, "MAE": 91.4546, "R2": 0.4419}, "Random Forest": {"RMSE": 134.8663, "MAE": 90.1654, "R2": 0.4555}}
